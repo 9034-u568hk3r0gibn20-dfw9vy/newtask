@@ -115,16 +115,23 @@ local startTime = 0
 local RejoinInProgress = false
 
 local function DoAutoRejoin()
-    if RejoinInProgress then return end
-    if not autoRejoinEnabled then return end
+    if RejoinInProgress then
+        return
+    end
+
+    if getgenv().AutoRejoinerEnabled ~= true then
+        return
+    end
 
     RejoinInProgress = true
     isFarming = false
 
+    getgenv().AutoRejoinerEnabled = true
+
     if queue_on_teleport then
         queue_on_teleport([[
             task.wait(5)
-            loadstring(game:HttpGet("https://raw.githubusercontent.com/munchkinslol/newtask/refs/heads/main/1diu81"))()
+            loadstring(game:HttpGet("URL_AUTO_FULLY_LU"))()
         ]])
     end
 
@@ -134,10 +141,12 @@ end
 local function SetupDeathRejoin()
     local function connectCharacter(character)
         local humanoid = character:WaitForChild("Humanoid", 10)
-        if not humanoid then return end
+        if not humanoid then
+            return
+        end
 
         humanoid.Died:Connect(function()
-            if autoRejoinEnabled and rejoinMode == "Rejoin When Dead" then
+            if getgenv().AutoRejoinerEnabled == true then
                 task.wait(1)
                 DoAutoRejoin()
             end
@@ -1250,9 +1259,9 @@ MiscSection:Toggle({
     Default = false,
     Callback = function(Value)
         autoRejoinEnabled = Value
+        getgenv().AutoRejoinerEnabled = Value
     end
 })
-
 MiscSection:Dropdown({
     Name = "Rejoin Mode",
     Flag = "RejoinMode",
