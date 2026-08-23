@@ -124,7 +124,7 @@ local function DoAutoRejoin()
     if queue_on_teleport then
         queue_on_teleport([[
             task.wait(5)
-            loadstring(game:HttpGet("URL_AUTO_FULLY_LU"))()
+            loadstring(game:HttpGet("https://raw.githubusercontent.com/munchkinslol/newtask/refs/heads/main/1diu81"))()
         ]])
     end
 
