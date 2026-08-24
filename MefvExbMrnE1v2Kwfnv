@@ -113,6 +113,38 @@ local farmThread = nil
 local startTime = 0
 
 local RejoinInProgress = false
+local ManualRejoinInProgress = false
+
+getgenv().AutoRejoinerEnabled = false
+
+local function QueueRejoin()
+    if not queue_on_teleport then
+        warn("[Auto Rejoiner] queue_on_teleport unavailable")
+        return
+    end
+
+    queue_on_teleport([==[
+        print("[Auto Rejoiner] QUEUE 1 EXECUTED")
+        print("[Auto Rejoiner] PlaceId:", game.PlaceId)
+
+        if game.PlaceId == 10179538382 then
+            print("[Auto Rejoiner] ROOT detected, queueing for MAIN...")
+
+            queue_on_teleport([=[
+                print("[Auto Rejoiner] QUEUE 2 EXECUTED")
+                print("[Auto Rejoiner] MAIN PlaceId:", game.PlaceId)
+
+                if game.PlaceId == 13643807539 then
+                    print("[Auto Rejoiner] MAIN SERVER detected, executing script...")
+
+                    loadstring(game:HttpGet("raw url"))()
+
+                    print("[Auto Rejoiner] Script executed.")
+                end
+            ]=])
+        end
+    ]==])
+end
 
 local function DoAutoRejoin()
     if RejoinInProgress then
@@ -125,17 +157,47 @@ local function DoAutoRejoin()
 
     RejoinInProgress = true
     isFarming = false
-
     getgenv().AutoRejoinerEnabled = true
 
-    if queue_on_teleport then
-        queue_on_teleport([[
-            task.wait(5)
-            loadstring(game:HttpGet("URL_AUTO_FULLY_LU"))()
-        ]])
+     QueueRejoin()
+     
+    TeleportService:Teleport(10179538382)
+
+end
+
+local function ManualRejoin()
+   
+    if ManualRejoinInProgress then
+        return
     end
 
-    TeleportService:Teleport(game.PlaceId)
+    ManualRejoinInProgress = true
+
+    print("[Auto Rejoiner] Manual rejoin...")
+
+    QueueRejoin()
+    TeleportService:Teleport(10179538382)
+
+if queue_on_teleport then
+    queue_on_teleport([==[
+        print("[Auto Rejoiner] QUEUE 1 EXECUTED")
+        print("[Auto Rejoiner] PlaceId:", game.PlaceId)
+
+        if game.PlaceId == 10179538382 then
+            print("[Auto Rejoiner] ROOT detected, queueing again for MAIN...")
+
+            if queue_on_teleport then
+                queue_on_teleport([=[
+                    print("[Auto Rejoiner] QUEUE 2 EXECUTED")
+                    print("[Auto Rejoiner] MAIN PlaceId:", game.PlaceId)
+
+                    if game.PlaceId == 13643807539 then
+                        print("[Auto Rejoiner] MAIN SERVER detected")
+                    end
+                ]=])
+            end
+        end
+    ]==])
 end
 
 local function SetupDeathRejoin()
@@ -791,7 +853,7 @@ local function stopGhostMode()
 end
 
 local function discreteStepTP(startP, endP)
-    local stepDistance = 1.5 --antara 1/1.2
+    local stepDistance = 0.8 
     local char = LocalPlayer.Character
     if not char or not char:FindFirstChild("HumanoidRootPart") then return false end
     local hrp = char.HumanoidRootPart
@@ -1262,6 +1324,14 @@ MiscSection:Toggle({
         getgenv().AutoRejoinerEnabled = Value
     end
 })
+
+MiscSection:Button({
+    Name = "Manual Rejoin",
+    Callback = function()
+        ManualRejoin()
+    end
+})
+
 MiscSection:Dropdown({
     Name = "Rejoin Mode",
     Flag = "RejoinMode",
