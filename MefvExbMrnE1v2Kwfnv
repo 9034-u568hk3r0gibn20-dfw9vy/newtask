@@ -1,4 +1,4 @@
-local scriptOk, scriptErr = pcall(function()
+  local scriptOk, scriptErr = pcall(function()
 
 if not game:IsLoaded() then game.Loaded:Wait() end
 
@@ -6,7 +6,7 @@ local Players = game:GetService("Players")
 while not Players.LocalPlayer do task.wait(0.1) end
 local LocalPlayer = Players.LocalPlayer
 
--- ===== BYPASS (Hyphon Emulator) =====
+-- bypass hyphon emu baru
 if not filtergc then
     filtergc = function(ftype, filters, returnSingle)
         local results = {}
@@ -104,6 +104,7 @@ local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local CoreGui = game:GetService("CoreGui")
 local UserInputService = game:GetService("UserInputService")
 local RunService = game:GetService("RunService")
+local LogService = game:GetService("LogService")
 local TweenService = game:GetService("TweenService")
 local VirtualUser = game:GetService("VirtualUser")
 local ProximityPromptService = game:GetService("ProximityPromptService")
@@ -112,117 +113,98 @@ local isFarming = false
 local farmThread = nil
 local startTime = 0
 
-local RejoinInProgress = false
-local ManualRejoinInProgress = false
+local AutoRejoinConfig = {
+    Enabled = true,
+    ScriptUrl = "",
+    GameId = 10179538382,
+}
 
-getgenv().AutoRejoinerEnabled = false
+local IsDeathTeleport = false
 
-local function QueueRejoin()
-    if not queue_on_teleport then
-        warn("[Auto Rejoiner] queue_on_teleport unavailable")
-        return
-    end
-
-    queue_on_teleport([==[
-        print("[Auto Rejoiner] QUEUE 1 EXECUTED")
-        print("[Auto Rejoiner] PlaceId:", game.PlaceId)
-
-        if game.PlaceId == 10179538382 then
-            print("[Auto Rejoiner] ROOT detected, queueing for MAIN...")
-
-            queue_on_teleport([=[
-                print("[Auto Rejoiner] QUEUE 2 EXECUTED")
-                print("[Auto Rejoiner] MAIN PlaceId:", game.PlaceId)
-
-                if game.PlaceId == 13643807539 then
-                    print("[Auto Rejoiner] MAIN SERVER detected, executing script...")
-
-                    loadstring(game:HttpGet("raw url"))()
-
-                    print("[Auto Rejoiner] Script executed.")
-                end
-            ]=])
-        end
-    ]==])
+local function MarkDeathTeleport()
+    IsDeathTeleport = true
 end
 
-local function DoAutoRejoin()
-    if RejoinInProgress then
+_G.MarkDeathTeleport = MarkDeathTeleport
+
+local function DoRejoin(isManual)
+    if not isManual and not AutoRejoinConfig.Enabled then
+        return
+    end
+    
+    if IsDeathTeleport then
+        IsDeathTeleport = false
         return
     end
 
-    if getgenv().AutoRejoinerEnabled ~= true then
-        return
-    end
-
-    RejoinInProgress = true
-    isFarming = false
-    getgenv().AutoRejoinerEnabled = true
-
-     QueueRejoin()
-     
-    TeleportService:Teleport(10179538382)
-
+    getgenv().FULLY_MS_AFTER_REJOIN = true
+    
+    queue_on_teleport([[
+        queue_on_teleport("task.wait(15)\ngetgenv().FULLY_MS_AFTER_REJOIN = true\ngetgenv().FULLY_MS_V1 = nil\nloadstring(game:HttpGet(']] .. AutoRejoinConfig.ScriptUrl .. [['))()")
+    ]])
+    
+    TeleportService:Teleport(AutoRejoinConfig.GameId)
 end
 
 local function ManualRejoin()
-   
-    if ManualRejoinInProgress then
-        return
-    end
-
-    ManualRejoinInProgress = true
-
-    print("[Auto Rejoiner] Manual rejoin...")
-
-    QueueRejoin()
-    TeleportService:Teleport(10179538382)
-
-if queue_on_teleport then
-    queue_on_teleport([==[
-        print("[Auto Rejoiner] QUEUE 1 EXECUTED")
-        print("[Auto Rejoiner] PlaceId:", game.PlaceId)
-
-        if game.PlaceId == 10179538382 then
-            print("[Auto Rejoiner] ROOT detected, queueing again for MAIN...")
-
-            if queue_on_teleport then
-                queue_on_teleport([=[
-                    print("[Auto Rejoiner] QUEUE 2 EXECUTED")
-                    print("[Auto Rejoiner] MAIN PlaceId:", game.PlaceId)
-
-                    if game.PlaceId == 13643807539 then
-                        print("[Auto Rejoiner] MAIN SERVER detected")
-                    end
-                ]=])
-            end
-        end
-    ]==])
+    task.spawn(function()
+        DoRejoin(true)
+    end)
 end
 
-local function SetupDeathRejoin()
-    local function connectCharacter(character)
-        local humanoid = character:WaitForChild("Humanoid", 10)
-        if not humanoid then
-            return
-        end
-
-        humanoid.Died:Connect(function()
-            if getgenv().AutoRejoinerEnabled == true then
-                task.wait(1)
-                DoAutoRejoin()
+-- DETECT KICK
+task.spawn(function()
+    local conn
+    conn = LogService.MessageOut:Connect(function(msg, mtype)
+        if mtype == Enum.MessageType.MessageError then
+            if msg:find("Kicked") or msg:find("Disconnected") or msg:find("Idle") or 
+               msg:find("Removed") or msg:find("Connection lost") or msg:find("Ban") then
+                if conn then conn:Disconnect() end
+                task.spawn(DoRejoin)
             end
+        end
+    end)
+end)
+
+-- DETECT NATURAL DEATH
+local function SetupDeathDetection()
+    local function OnCharacterAdded(char)
+        local hum = char:WaitForChild("Humanoid", 5)
+        if not hum then return end
+        hum.Died:Connect(function()
+            if IsDeathTeleport then
+                IsDeathTeleport = false
+                return
+            end
+
+            task.spawn(DoRejoin)
         end)
     end
 
-    if LocalPlayer.Character then
-        connectCharacter(LocalPlayer.Character)
-    end
+local char = LocalPlayer.Character
 
-    LocalPlayer.CharacterAdded:Connect(connectCharacter)
+if char then
+    task.spawn(function()
+        OnCharacterAdded(char)
+    end)
 end
 
-SetupDeathRejoin()
+LocalPlayer.CharacterAdded:Connect(OnCharacterAdded)
+end
+
+SetupDeathDetection()
+
+-- ============================================================
+-- 🚀 AUTO EXECUTE (HANYA SETELAH REJOIN)
+-- ============================================================
+task.spawn(function()
+    task.wait(3)
+    if getgenv().FULLY_MS_AFTER_REJOIN then
+        getgenv().FULLY_MS_AFTER_REJOIN = nil
+        StartFullyFarm()
+    end
+end)
+
 
 local settings = {
     batchAmount = 1,
@@ -463,102 +445,12 @@ local isLoading = false
 -- SHOW LOADING SCREEN
 -- ==========================================
 local function showLoadingScreen()
-    isLoading = true
-
-    LoadText.Text = "ZERO.IDGF"
-    LoadSubText.Text = "PROSES TELEPORT"
-
-    -- Animasi titik hanya untuk subtext
-    task.spawn(function()
-        local dots = 0
-
-        while isLoading do
-            dots = (dots + 1) % 4
-
-            LoadText.Text = "ZERO.IDGF"
-            LoadSubText.Text = "PROSES TELEPORT" .. string.rep(".", dots)
-
-            task.wait(0.35)
-        end
-    end)
-
-    local tweenInfo = TweenInfo.new(
-        0.3,
-        Enum.EasingStyle.Quad,
-        Enum.EasingDirection.Out
-    )
-
-    -- Black background fade in
-    TweenService:Create(
-        LoadFrame,
-        tweenInfo,
-        {BackgroundTransparency = 0}
-    ):Play()
-
-    -- Card fade in
-    TweenService:Create(
-        LoadingCard,
-        tweenInfo,
-        {BackgroundTransparency = 0}
-    ):Play()
-
-    -- Title fade in
-    TweenService:Create(
-        LoadText,
-        tweenInfo,
-        {TextTransparency = 0}
-    ):Play()
-
-    -- Subtext fade in
-    TweenService:Create(
-        LoadSubText,
-        tweenInfo,
-        {TextTransparency = 0}
-    ):Play()
 end
 
 -- ==========================================
 -- HIDE LOADING SCREEN
 -- ==========================================
 local function hideLoadingScreen()
-    local tweenInfo = TweenInfo.new(
-        0.3,
-        Enum.EasingStyle.Quad,
-        Enum.EasingDirection.Out
-    )
-
-    local fadeCard = TweenService:Create(
-        LoadingCard,
-        tweenInfo,
-        {BackgroundTransparency = 1}
-    )
-
-    local fadeTitle = TweenService:Create(
-        LoadText,
-        tweenInfo,
-        {TextTransparency = 1}
-    )
-
-    local fadeSub = TweenService:Create(
-        LoadSubText,
-        tweenInfo,
-        {TextTransparency = 1}
-    )
-
-    local fadeBackground = TweenService:Create(
-        LoadFrame,
-        tweenInfo,
-        {BackgroundTransparency = 1}
-    )
-
-    fadeCard:Play()
-    fadeTitle:Play()
-    fadeSub:Play()
-    fadeBackground:Play()
-
-    fadeBackground.Completed:Wait()
-
-    isLoading = false
 end
 
 local isLoading = false
@@ -567,108 +459,13 @@ local isLoading = false
 -- SHOW LOADING SCREEN
 -- ==========================================
 local function showLoadingScreen()
- isLoading = true
-
-    task.spawn(function()
-    local hue = 0
-
-    while isLoading do
-        hue = (hue + 0.005) % 1
-        LoadText.TextColor3 = Color3.fromHSV(hue, 1, 1)
-        task.wait(0.03)
-    end
-end)
-
-    LoadText.Text = "ZERO.IDGF"
-    LoadSubText.Text = "PROSES TELEPORT"
-
-    task.spawn(function()
-        local dots = 0
-
-        while isLoading do
-            dots = (dots + 1) % 4
-
-            LoadText.Text = "ZERO.IDGF"
-            LoadSubText.Text = "PROSES TELEPORT" .. string.rep(".", dots)
-
-            task.wait(0.35)
-        end
-    end)
-
-    local tweenInfo = TweenInfo.new(
-        0.3,
-        Enum.EasingStyle.Quad,
-        Enum.EasingDirection.Out
-    )
-
-    TweenService:Create(
-        LoadFrame,
-        tweenInfo,
-        {BackgroundTransparency = 0}
-    ):Play()
-
-    TweenService:Create(
-        LoadingCard,
-        tweenInfo,
-        {BackgroundTransparency = 0}
-    ):Play()
-
-    TweenService:Create(
-        LoadText,
-        tweenInfo,
-        {TextTransparency = 0}
-    ):Play()
-
-    TweenService:Create(
-        LoadSubText,
-        tweenInfo,
-        {TextTransparency = 0}
-    ):Play()
 end
 
 -- ==========================================
 -- HIDE LOADING SCREEN
 -- ==========================================
 local function hideLoadingScreen()
- local tweenInfo = TweenInfo.new(
-        0.3,
-        Enum.EasingStyle.Quad,
-        Enum.EasingDirection.Out
-    )
-
-    local fadeCard = TweenService:Create(
-        LoadingCard,
-        tweenInfo,
-        {BackgroundTransparency = 1}
-    )
-
-    local fadeTitle = TweenService:Create(
-        LoadText,
-        tweenInfo,
-        {TextTransparency = 1}
-    )
-
-    local fadeSub = TweenService:Create(
-        LoadSubText,
-        tweenInfo,
-        {TextTransparency = 1}
-    )
-
-    local fadeBackground = TweenService:Create(
-        LoadFrame,
-        tweenInfo,
-        {BackgroundTransparency = 1}
-    )
-
-    fadeCard:Play()
-    fadeTitle:Play()
-    fadeSub:Play()
-    fadeBackground:Play()
-
-    fadeBackground.Completed:Wait()
-
-    isLoading = false
-end
+ end
 
 local function checkDeathStatus()
     if settings.stopIfDead then
@@ -1395,46 +1192,52 @@ HideNameSection:Label("Custom Color"):Colorpicker({
     end
 })
 
+local function StartFullyFarm()
+    if isFarming then
+        return
+    end
+
+    isFarming = true
+
+    task.spawn(function()
+        startTime = os.clock()
+        farmStartCash = getCash()
+
+        Statistics.Runtime = 0
+        Statistics.CashMade = 0
+        Statistics.MarshmallowsSold = 0
+
+        if not _G.OwnedKitchenPos then
+            local success = SetupApartment()
+
+            if not success then
+                isFarming = false
+                warn("No Vacant Apartment!")
+                return
+            end
+        end
+
+        if isFarming then
+            RunFarm()
+        end
+    end)
+end
+
 local Toggle = SectionLeft:Toggle({
     Name = "Start",
     Flag = "Start",
     Default = false,
 
-    Callback = function(Value)
-        isFarming = Value
-
-        if not Value then
-            unlockPosition()
-            return
-        end
-
-        task.spawn(function()
-
-            startTime = os.clock()
-            farmStartCash = getCash()
-
-            Statistics.Runtime = 0
-            Statistics.CashMade = 0
-            Statistics.MarshmallowsSold = 0
-
-            -- WAJIB SETUP APARTMENT DULU
-            if not _G.OwnedKitchenPos then
-                local success = SetupApartment()
-
-                if not success then
-                    isFarming = false
-                    warn("No Vacant Apartment!")
-                    return
-                end
-            end
-
-            -- Baru mulai farm
-            if isFarming then
-                RunFarm()
-            end
-
-        end)
+  Callback = function(Value)
+    if not Value then
+        isFarming = false
+        unlockPosition()
+        return
     end
+
+    StartFullyFarm()
+end
+
 })
 
 SectionLeft:Slider({
